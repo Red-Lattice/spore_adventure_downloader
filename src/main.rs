@@ -1,13 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+
 extern crate reqwest;
-use eframe::egui;
-use eframe::egui::Visuals;
-use std::io;
-use std::io::{BufRead, BufReader};
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
-use std::str;
+use eframe::{egui, egui::Visuals};
+use std::{str, io::Write, path::Path};
 
 
 fn main() -> Result<(), eframe::Error> {
@@ -18,40 +13,33 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Error's Adventure Downloader",
         options,
-        Box::new(|cc| {
-
-            Box::<MyApp>::default()
-        }),
+        Box::new(|_cc| {Box::<App>::default()}),
     )
 }
 
-struct MyApp {
+struct App {
     id: String,
-    age: u32,
     error_text: String,
 }
 
-impl Default for MyApp {
+impl Default for App {
     fn default() -> Self {
         Self {
             id: "".to_owned(),
-            age: 42,
             error_text: "".to_owned(),
         }
     }
 }
 
-impl eframe::App for MyApp {
+impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ctx.set_visuals(Visuals::dark());
-            ui.heading("Error's Spore Adventure Downloader");
+            ui.heading("Error's Spore Adventure Downloader\n");
             ui.horizontal(|ui| {
                 let name_label = ui.label("Adventure ID: ");
-                ui.text_edit_singleline(&mut self.id)
-                    .labelled_by(name_label.id);
+                ui.text_edit_singleline(&mut self.id).labelled_by(name_label.id);
             });
-            //ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
             if ui.button("Download Adventure").clicked() {
                 let res = get_adventure(&self.id);
                 self.error_text = res.error;
@@ -61,12 +49,15 @@ impl eframe::App for MyApp {
     }
 }
 
+#[allow(dead_code)] // The bool and error code are currently unused but may be used at some point so I don't want to get rid of them.
 struct AdventureGetResult {
     success: bool,
     error: String,
-    error_code: u32,
+    error_code: u8,
 }
 
+/// Downloads an adventure at a given ID.
+/// Saves the adventure to a png, then calls the function to get the creations required for it.
 fn get_adventure(input_id: &str) -> AdventureGetResult
 {
     if !input_id.chars().all(char::is_numeric) {
@@ -97,29 +88,12 @@ fn get_adventure(input_id: &str) -> AdventureGetResult
     let id_slice_2 = &input_id[3..6];
     let id_slice_3 = &input_id[6..9];
 
-    let file_name = format!("{input_id}.png");
-    let file_path = Path::new(&file_name);
-    //This is the format the URL's follow: http://static.spore.com/static/thumb/123/456/789/123456789123.png
-
     let url = format!("http://static.spore.com/static/thumb/{id_slice_1}/{id_slice_2}/{id_slice_3}/{input_id}.png");
     let xml_url = format!("http://static.spore.com/static/model/{id_slice_1}/{id_slice_2}/{id_slice_3}/{input_id}.xml");
 
-    let mut buffer = vec![];
-    let mut xml_buffer = vec![];
+    let xml_result = req_data_from_server(&xml_url);
 
-    let xmlresult = reqwest::blocking::get(xml_url.clone());
-    let mut xml_result = match xmlresult {
-        Ok(xmlresult) => xmlresult,
-        Err(_) => {
-            loop {
-                let xmlresult = reqwest::blocking::get(xml_url.clone());
-                if let Ok(xmlresult) = xmlresult {break xmlresult}
-            }
-        }
-    };
-    let _ = xml_result.copy_to(&mut xml_buffer);
-
-    if !String::from_utf8(xml_buffer.clone()).unwrap().contains("Scenario") {
+    if !String::from_utf8(xml_result.clone()).unwrap().contains("Scenario") {
         return AdventureGetResult {
             success: false,
             error: "ID provided is not the ID of an adventure".to_string(),
@@ -127,46 +101,48 @@ fn get_adventure(input_id: &str) -> AdventureGetResult
         }
     }
 
-    let result = reqwest::blocking::get(url.clone());
-            
-    let mut result = match result {
-        Ok(result) => result,
-        Err(_) => {
-            loop {
-                let result = reqwest::blocking::get(url.clone());
-                if let Ok(result) = result {break result}
-            }
-        }
-    };
-    let _ = result.copy_to(&mut buffer);
+    let buffer = req_data_from_server(&url);
 
+    let file_name = format!("{input_id}.png");
+    let file_path = Path::new(&file_name);
     let mut file = std::fs::File::create(file_path).unwrap();
     file.write_all(&buffer).unwrap();
 
-    let xml_data = match str::from_utf8(&xml_buffer) {
-        Ok(v) => v,
-        Err(e) => "XML ERROR",
-    };
-    if xml_data == "XML ERROR" {
-        return AdventureGetResult {
-            success: false,
-            error: "Something has gone horribly wrong with the XML data".to_string(),
-            error_code: 5,
-        }
-    }
+    let xml_data = str::from_utf8(&xml_result).unwrap();
 
     get_adventure_creations(xml_data);
 
     return AdventureGetResult {
         success: true,
-        error: "Success".to_string(),
+        error: "Successfully downloaded!".to_string(),
         error_code: 0,
     }
 }
 
+/// Sends a get request to the given URL. If an error is returned by the request it just repeatedly requests until it works again.
+fn req_data_from_server(url: &str) -> Vec<u8> {
+    let mut buffer = vec![];
+    let result = reqwest::blocking::get(url);
+            
+    let mut result = match result {
+        Ok(result) => result,
+        Err(_) => {
+            loop {
+                let result = reqwest::blocking::get(url);
+                if let Ok(result) = result {break result}
+            }
+        }
+    };
+    let _ = result.copy_to(&mut buffer);
+    return buffer
+}
+
+/// Gets all of the creations required for an adventure.
+/// Takes in the adventure's xml data as a string as a parameter
 fn get_adventure_creations(xml_data: &str) {
     let pos = xml_data.find("<assets><asset>").unwrap() + 15; // 15 = length of <assets><asset>
     let end = xml_data.find("<cScenarioResource>").unwrap() - 17;
+    
     let ids = xml_data[pos..end].split("</asset><asset>");
     for id in ids {
         let id_slice_1 = &id[0..3];
@@ -178,34 +154,9 @@ fn get_adventure_creations(xml_data: &str) {
 
         let url = format!("http://static.spore.com/static/thumb/{id_slice_1}/{id_slice_2}/{id_slice_3}/{id}.png");
 
-        let result = reqwest::blocking::get(url.clone());
-        
-        let mut result = match result {
-            Ok(result) => result,
-            Err(_) => {
-                loop {
-                    let result = reqwest::blocking::get(url.clone());
-                    if let Ok(result) = result {break result}
-                }
-            }
-        };
-        let mut buffer = vec![];
-        let _ = result.copy_to(&mut buffer);
+        let result = req_data_from_server(&url);
 
         let mut file = std::fs::File::create(file_path).unwrap();
-        file.write_all(&buffer).unwrap();
+        file.write_all(&result).unwrap();
     }
-}
-
-fn clean_id(input: u64) -> String
-{
-    if input > 99
-    {
-        return input.to_string();
-    }
-    if input > 9
-    {
-        return "0".to_owned() + &input.to_string();
-    }
-    return "00".to_owned() + &input.to_string();
 }
