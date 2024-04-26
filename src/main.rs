@@ -4,7 +4,6 @@ extern crate reqwest;
 use eframe::{egui, egui::Visuals};
 use std::{str, io::Write, path::Path};
 
-
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
@@ -17,16 +16,21 @@ fn main() -> Result<(), eframe::Error> {
     )
 }
 
+#[derive(PartialEq)]
+enum Input {ID, URL}
+
 struct App {
-    id: String,
+    user_input: String,
     error_text: String,
+    input_style: Input,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
-            id: "".to_owned(),
+            user_input: "".to_owned(),
             error_text: "".to_owned(),
+            input_style: Input::URL,
         }
     }
 }
@@ -36,12 +40,21 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             ctx.set_visuals(Visuals::dark());
             ui.heading("Error's Spore Adventure Downloader\n");
+            
             ui.horizontal(|ui| {
-                let name_label = ui.label("Adventure ID: ");
-                ui.text_edit_singleline(&mut self.id).labelled_by(name_label.id);
+                ui.label("Input type: ");
+                ui.radio_value(&mut self.input_style, Input::URL, "Url");
+                ui.radio_value(&mut self.input_style, Input::ID, "ID");
+            });
+            ui.horizontal(|ui| {
+                let name_label = ui.label("Adventure: ");
+                ui.text_edit_singleline(&mut self.user_input).labelled_by(name_label.id);
             });
             if ui.button("Download Adventure").clicked() {
-                let res = get_adventure(&self.id);
+                let res = match self.input_style {
+                    Input::ID => get_adventure(IDPackage {valid: true, id: self.user_input.clone(), error_message: "".to_string()}),
+                    Input::URL => get_adventure(pull_id_from_url(&self.user_input)),
+                };
                 self.error_text = res.error;
             }
             ui.label(format!("{}",self.error_text));
@@ -53,26 +66,49 @@ impl eframe::App for App {
 struct AdventureGetResult {
     success: bool,
     error: String,
-    error_code: u8,
+}
+
+struct IDPackage {
+    valid: bool,
+    id: String,
+    error_message: String,
+}
+
+fn pull_id_from_url(url: &str) -> IDPackage {
+    let id_start = url.find("sast-");
+    if let Some(id_start) = id_start {
+        let end = id_start + 17;
+        let id = &url[id_start+5..end];
+        if !id.chars().all(char::is_numeric) {
+            return IDPackage {valid: false, id: "".to_string(), error_message: format!("Error: URL contains an invalid ID: {id}")}
+        }
+        return IDPackage {valid: true, id: id.to_string(), error_message: "".to_string()}
+    };
+    return IDPackage {valid: false, id: "".to_string(), error_message: format!("Error: URL is not in a valid format")}
 }
 
 /// Downloads an adventure at a given ID.
 /// Saves the adventure to a png, then calls the function to get the creations required for it.
-fn get_adventure(input_id: &str) -> AdventureGetResult
+fn get_adventure(package: IDPackage) -> AdventureGetResult
 {
+    let input_id = match package.valid {
+        true => package.id,
+        false => return AdventureGetResult {
+            success: false,
+            error: package.error_message,
+        }
+    };
     if !input_id.chars().all(char::is_numeric) {
         return AdventureGetResult {
             success: false,
             error: "Given ID contains non-digit chararcters.".to_string(),
-            error_code: 2,
         }
     }
 
     if input_id.len() < 12 {
         return AdventureGetResult {
             success: false,
-            error: "Given ID is too short | Creation ID's are 12 digits long".to_string(),
-            error_code: 3,
+            error: format!("Given ID {input_id} is too short | Creation ID's are 12 digits long"),
         }
     }
 
@@ -80,7 +116,6 @@ fn get_adventure(input_id: &str) -> AdventureGetResult
         return AdventureGetResult {
             success: false,
             error: "Given ID is too long | Creation ID's are 12 digits long".to_string(),
-            error_code: 4,
         }
     }
 
@@ -97,7 +132,6 @@ fn get_adventure(input_id: &str) -> AdventureGetResult
         return AdventureGetResult {
             success: false,
             error: "ID provided is not the ID of an adventure".to_string(),
-            error_code: 1,
         }
     }
 
@@ -115,7 +149,6 @@ fn get_adventure(input_id: &str) -> AdventureGetResult
     return AdventureGetResult {
         success: true,
         error: "Successfully downloaded!".to_string(),
-        error_code: 0,
     }
 }
 
