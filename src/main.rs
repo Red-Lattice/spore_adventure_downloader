@@ -6,7 +6,7 @@ use std::{str, io::Write, path::Path};
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([480.0, 240.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -39,6 +39,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ctx.set_visuals(Visuals::dark());
+            ctx.set_pixels_per_point(1.5);
             ui.heading("Error's Spore Adventure Downloader\n");
             
             ui.horizontal(|ui| {
