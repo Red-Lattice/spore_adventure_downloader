@@ -3,16 +3,17 @@
 extern crate reqwest;
 use eframe::{egui, egui::Visuals};
 use std::{fs, str, io::Write, path::Path};
+use image;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 320.0]).with_icon(load_icon()),
+        viewport: egui::ViewportBuilder::default().with_inner_size([690.0, 320.0]).with_icon(load_icon()),
         ..Default::default()
     };
     eframe::run_native(
         "Error's Adventure Downloader",
         options,
-        Box::new(|_cc| {Box::<App>::default()}),
+        Box::new(|cc| {egui_extras::install_image_loaders(&cc.egui_ctx); Box::<App>::default()}),
     )
 }
 
@@ -55,8 +56,9 @@ impl eframe::App for App {
                 ui.text_edit_singleline(&mut self.user_input).labelled_by(name_label.id);
             });
             ui.horizontal(|ui| {
-                let name_label = ui.label("File path: ");
+                let name_label = ui.label("Download location (optional): ");
                 ui.text_edit_singleline(&mut self.file_path).labelled_by(name_label.id);
+                ui.image(egui::include_image!("TooltipIco.png")).on_hover_text("This is the location the saved folder will be placed in.\nIf blank, it will put them in the same folder as this program's .exe");
             });
             if ui.button("Download Adventure").clicked() {
                 let res = match self.input_style {
@@ -67,6 +69,9 @@ impl eframe::App for App {
             }
             ui.label(format!("{}",self.error_text));
         });
+        egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
+            ui.label("Version 1.0.0");
+         });
     }
 }
 
@@ -158,21 +163,21 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
     if !input_id.chars().all(char::is_numeric) {
         return AdventureGetResult {
             success: false,
-            error: "Given ID contains non-digit chararcters.".to_string(),
+            error: "Error: Given ID contains non-digit chararcters.".to_string(),
         }
     }
 
     if input_id.len() < 12 {
         return AdventureGetResult {
             success: false,
-            error: format!("Given ID {input_id} is too short | Creation ID's are 12 digits long"),
+            error: format!("Error: Given ID {input_id} is too short\nCreation ID's are 12 digits long"),
         }
     }
 
     if input_id.len() > 12 {
         return AdventureGetResult {
             success: false,
-            error: "Given ID is too long | Creation ID's are 12 digits long".to_string(),
+            error: "Error: Given ID is too long\nCreation ID's are 12 digits long".to_string(),
         }
     }
 
