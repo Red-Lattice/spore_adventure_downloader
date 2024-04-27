@@ -6,7 +6,7 @@ use std::{fs, str, io::Write, path::Path};
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([480.0, 240.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 320.0]).with_icon(load_icon()),
         ..Default::default()
     };
     eframe::run_native(
@@ -42,6 +42,7 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             ctx.set_visuals(Visuals::dark());
             ctx.set_pixels_per_point(1.33);
+            load_icon();
             ui.heading("Error's Spore Adventure Downloader\n");
             
             ui.horizontal(|ui| {
@@ -69,7 +70,25 @@ impl eframe::App for App {
     }
 }
 
-#[allow(dead_code)] // The bool and error code are currently unused but may be used at some point so I don't want to get rid of them.
+pub(crate) fn load_icon() -> egui::IconData {
+	let (icon_rgba, icon_width, icon_height) = {
+		let icon = include_bytes!("SADLico2.png");
+		let image = image::load_from_memory(icon)
+			.expect("Failed to open icon path")
+			.into_rgba8();
+		let (width, height) = image.dimensions();
+		let rgba = image.into_raw();
+		(rgba, width, height)
+	};
+	
+	egui::IconData {
+		rgba: icon_rgba,
+		width: icon_width,
+		height: icon_height,
+	}
+}
+
+#[allow(dead_code)] // The bool and error code is currently unused but may be used at some point so I don't want to get rid of it.
 struct AdventureGetResult {
     success: bool,
     error: String,
