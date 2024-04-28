@@ -98,7 +98,7 @@ impl eframe::App for App {
         egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Version 1.0.0  |  ");
-                ui.hyperlink_to("For information on how to use, go here", "");
+                ui.hyperlink_to("For information on how to use, go here", "https://red-lattice.github.io/SADL_downloads_and_info/");
             });
             
          });
