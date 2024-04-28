@@ -2,7 +2,7 @@
 
 extern crate reqwest;
 use eframe::{egui, egui::Visuals};
-use std::{fs, str, io::Write, path::Path};
+use std::{fs::{self, canonicalize}, io::Write, path::Path, process::Command, str};
 use image;
 
 fn main() -> Result<(), eframe::Error> {
@@ -25,6 +25,8 @@ struct App {
     error_text: String,
     input_style: Input,
     file_path: String,
+    dl_path: String,
+    success: bool,
 }
 
 impl Default for App {
@@ -34,6 +36,8 @@ impl Default for App {
             error_text: "".to_owned(),
             input_style: Input::URL,
             file_path: "".to_owned(),
+            dl_path: "".to_owned(),
+            success: false,
         }
     }
 }
@@ -52,7 +56,12 @@ impl eframe::App for App {
                 ui.radio_value(&mut self.input_style, Input::ID, "ID");
             });
             ui.horizontal(|ui| {
-                let name_label = ui.label("Adventure: ");
+                let name_label = if self.input_style == Input::ID {
+                    ui.label("Adventure ID: ")
+                }
+                else {
+                    ui.label("Adventure URL: ")
+                };
                 ui.text_edit_singleline(&mut self.user_input).labelled_by(name_label.id);
             });
             ui.horizontal(|ui| {
@@ -60,19 +69,62 @@ impl eframe::App for App {
                 ui.text_edit_singleline(&mut self.file_path).labelled_by(name_label.id);
                 ui.image(egui::include_image!("TooltipIco.png")).on_hover_text("This is the location the saved folder will be placed in.\nIf blank, it will put them in the same folder as this program's .exe");
             });
-            if ui.button("Download Adventure").clicked() {
+            if ui.button("Download adventure").clicked() {
                 let res = match self.input_style {
                     Input::ID => get_adventure(IDPackage {valid: true, id: self.user_input.clone(), error_message: "".to_string()}, clean_file_path(&self.file_path).as_str()),
                     Input::URL => get_adventure(pull_id_from_url(&self.user_input), clean_file_path(&self.file_path).as_str()),
                 };
                 self.error_text = res.error;
+                self.success = res.success;
+                if res.success {
+                    self.dl_path = canonicalize(Path::new(&res.download_path)).unwrap().into_os_string().into_string().unwrap();
+                }
+            }
+            if self.success {
+                if ui.button("Open downloaded file").clicked() {
+                    #[cfg(windows)]{
+                        open_file_location_windows(&self.dl_path);
+                    }
+                    #[cfg(macos)]{
+                        open_file_location_macos(&self.dl_path);
+                    }
+                    #[cfg(linux)]{
+                        open_file_location_linux(&self.dl_path);
+                    }
+                }
             }
             ui.label(format!("{}",self.error_text));
         });
         egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
-            ui.label("Version 1.0.0");
+            ui.horizontal(|ui| {
+                ui.label("Version 1.0.0  |  ");
+                ui.hyperlink_to("For information on how to use, go here", "");
+            });
+            
          });
     }
+}
+
+#[cfg(macos)]
+fn open_file_location_macos(file_path: &str) {
+    Command::new( "open" )
+        .arg( file_path ) // <- Specify the directory you'd like to open.
+        .spawn( )
+        .unwrap( );
+}
+#[cfg(windows)]
+fn open_file_location_windows(file_path: &str) {
+    Command::new( "explorer" )
+        .arg( file_path ) // <- Specify the directory you'd like to open.
+        .spawn( )
+        .unwrap( );
+}
+#[cfg(linux)]
+fn open_file_location_linux(file_path: &str) {
+    Command::new( "xdg-open" )
+        .arg( file_path ) // <- Specify the directory you'd like to open.
+        .spawn( )
+        .unwrap( );
 }
 
 pub(crate) fn load_icon() -> egui::IconData {
@@ -93,10 +145,10 @@ pub(crate) fn load_icon() -> egui::IconData {
 	}
 }
 
-#[allow(dead_code)] // The bool and error code is currently unused but may be used at some point so I don't want to get rid of it.
 struct AdventureGetResult {
     success: bool,
     error: String,
+    download_path: String,
 }
 
 struct IDPackage {
@@ -149,6 +201,14 @@ fn get_adventure_name(id: &str) -> String {
     return format!("Adventure-{id}")
 }
 
+fn adventure_dl_error(err: &str) -> AdventureGetResult {
+    return AdventureGetResult {
+        success: false,
+        error: err.to_string(),
+        download_path: "".to_string(),
+    }
+}
+
 /// Downloads an adventure at a given ID.
 /// Saves the adventure to a png, then calls the function to get the creations required for it.
 fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
@@ -158,34 +218,23 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
         false => return AdventureGetResult {
             success: false,
             error: package.error_message,
+            download_path: "".to_string(),
         }
     };
     if !input_id.chars().all(char::is_numeric) {
-        return AdventureGetResult {
-            success: false,
-            error: "Error: Given ID contains non-digit chararcters.".to_string(),
-        }
+        return adventure_dl_error("Error: Given ID contains non-digit chararcters.");
     }
 
     if input_id.len() < 12 {
-        return AdventureGetResult {
-            success: false,
-            error: format!("Error: Given ID {input_id} is too short\nCreation ID's are 12 digits long"),
-        }
+        return adventure_dl_error(&format!("Error: Given ID {input_id} is too short\nCreation ID's are 12 digits long"));
     }
 
     if input_id.len() > 12 {
-        return AdventureGetResult {
-            success: false,
-            error: "Error: Given ID is too long\nCreation ID's are 12 digits long".to_string(),
-        }
+        return adventure_dl_error(&format!("Error: Given ID {input_id} is too long\nCreation ID's are 12 digits long"));
     }
 
     if !Path::exists(Path::new(path)) && path.len() > 0 {
-        return AdventureGetResult {
-            success: false,
-            error: format!("Error: File path {path} does not exist!"),
-        }
+        return adventure_dl_error(&format!("Error: File path {path} does not exist!"));
     }
     
     let id_slice_1 = &input_id[0..3];
@@ -198,10 +247,7 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
     let xml_result = req_data_from_server(&xml_url);
 
     if !String::from_utf8(xml_result.clone()).unwrap().contains("Scenario") {
-        return AdventureGetResult {
-            success: false,
-            error: "ID provided is not the ID of an adventure".to_string(),
-        }
+        return adventure_dl_error("ID provided is not the ID of an adventure");
     }
     let adv_name = get_adventure_name(&input_id);
 
@@ -220,6 +266,7 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
     return AdventureGetResult {
         success: true,
         error: "Successfully downloaded!".to_string(),
+        download_path: format!("{path}{adv_name}//"),
     }
 }
 
