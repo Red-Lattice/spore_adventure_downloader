@@ -81,14 +81,14 @@ impl eframe::App for App {
                 }
             }
             if self.success {
-                if ui.button("Open downloaded file").clicked() {
+                if ui.button("Open downloaded folder").on_hover_text("Opens a window to the folder containing the downloaded pngs for the adventure.").clicked() {
                     #[cfg(windows)]{
                         open_file_location_windows(&self.dl_path);
                     }
                     #[cfg(macos)]{
                         open_file_location_macos(&self.dl_path);
                     }
-                    #[cfg(linux)]{
+                    #[cfg(target_os = "linux")]{
                         open_file_location_linux(&self.dl_path);
                     }
                 }
@@ -119,7 +119,7 @@ fn open_file_location_windows(file_path: &str) {
         .spawn( )
         .unwrap( );
 }
-#[cfg(linux)]
+#[cfg(target_os = "linux")]
 fn open_file_location_linux(file_path: &str) {
     Command::new( "xdg-open" )
         .arg( file_path ) // <- Specify the directory you'd like to open.
@@ -291,6 +291,7 @@ fn req_data_from_server(url: &str) -> Vec<u8> {
 /// Gets all of the creations required for an adventure.
 /// Takes in the adventure's xml data as a string as a parameter
 fn get_adventure_creations(xml_data: &str, file_path: &str) {
+    if let None = xml_data.find("<assets><asset>") {return;}
     let pos = xml_data.find("<assets><asset>").unwrap() + 15; // 15 = length of <assets><asset>
     let end = xml_data.find("<cScenarioResource>").unwrap() - 17;
     
