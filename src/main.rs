@@ -2,7 +2,7 @@
 
 extern crate reqwest;
 use eframe::{egui, egui::Visuals};
-use std::{fs::{self, canonicalize}, io::Write, path::Path, process::Command, str};
+use std::{ffi::OsStr, fs::{self, canonicalize}, io::Write, path::Path, process::Command, str};
 use image;
 
 fn main() -> Result<(), eframe::Error> {
@@ -97,7 +97,14 @@ impl eframe::App for App {
                     }
                 }
             }
-            ui.label(format!("{}",self.error_text));
+            if self.error_text.contains("Warning") {
+                ui.label(format!("Successfully downloaded!")); 
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Warning:").color(egui::Color32::from_rgb(255, 255, 50))); 
+                    ui.label(format!("Non-English character in adventure name. Used adventure ID as fallback."));
+                    });
+                
+            } else {ui.label(format!("{}",self.error_text));}
         });
         egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -110,7 +117,7 @@ impl eframe::App for App {
 }
 
 fn default_id_package(user_input: &str) -> IDPackage {
-    return IDPackage {valid: true, id: user_input, error_message: "".to_string()}
+    return IDPackage {valid: true, id: user_input.to_string(), error_message: "".to_string()}
 }
 
 /// These functions open a file explorer window on their respective platforms.
@@ -196,7 +203,12 @@ fn pull_id_from_url(url: &str) -> IDPackage {
     return IDPackage {valid: false, id: "".to_string(), error_message: format!("Error: URL is not in a valid format")}
 }
 
-fn create_path(path: &str) {let _ = fs::create_dir_all(path);}
+fn create_path(path: &str) {
+    let _ = fs::create_dir_all(OsStr::new(path));
+    //if let Err(a) = res {
+    //    println!("{}", a);
+    //}
+}
 
 fn get_adventure_name(id: &str) -> String {
     let url = format!("http://www.spore.com/rest/asset/{id}");
@@ -269,8 +281,24 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
     create_path(&format!("{path}{adv_name}//"));
     let file_name = format!("{path}{adv_name}//{input_id}.png");
     let file_path = Path::new(&file_name);
-    let mut file = std::fs::File::create(file_path).unwrap();
-    file.write_all(&buffer).unwrap();
+    let file = std::fs::File::create(file_path);
+    if let Err(_) = file {
+        create_path(&format!("{path}{input_id}//"));
+        let mut new_file = std::fs::File::create(format!("{path}{input_id}//{input_id}.png")).unwrap();
+        new_file.write_all(&buffer).unwrap();
+
+        let xml_data = str::from_utf8(&xml_result).unwrap();
+
+        get_adventure_creations(xml_data, &format!("{path}{input_id}//"));
+
+        return AdventureGetResult {
+            success: true,
+            error: "Successfully downloaded!\nWarning: Non-English character in adventure name. Defaulted to adventure ID as fallback.".to_string(),
+            download_path: format!("{path}{input_id}//"),
+        }
+    }
+    let mut unwrapped_file = file.unwrap();
+    unwrapped_file.write_all(&buffer).unwrap();
 
     let xml_data = str::from_utf8(&xml_result).unwrap();
 
