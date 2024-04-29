@@ -55,6 +55,7 @@ impl eframe::App for App {
                 ui.radio_value(&mut self.input_style, Input::URL, "Url");
                 ui.radio_value(&mut self.input_style, Input::ID, "ID");
             });
+
             ui.horizontal(|ui| {
                 let name_label = if self.input_style == Input::ID {
                     ui.label("Adventure ID: ")
@@ -64,14 +65,16 @@ impl eframe::App for App {
                 };
                 ui.text_edit_singleline(&mut self.user_input).labelled_by(name_label.id);
             });
+
             ui.horizontal(|ui| {
                 let name_label = ui.label("Download location (optional): ");
                 ui.text_edit_singleline(&mut self.file_path).labelled_by(name_label.id);
                 ui.image(egui::include_image!("TooltipIco.png")).on_hover_text("This is the location the saved folder will be placed in.\nIf blank, it will put them in the same folder as this program's .exe");
             });
+
             if ui.button("Download adventure").clicked() {
                 let res = match self.input_style {
-                    Input::ID => get_adventure(IDPackage {valid: true, id: self.user_input.clone(), error_message: "".to_string()}, clean_file_path(&self.file_path).as_str()),
+                    Input::ID => get_adventure(default_id_package(&self.user_input), clean_file_path(&self.file_path).as_str()),
                     Input::URL => get_adventure(pull_id_from_url(&self.user_input), clean_file_path(&self.file_path).as_str()),
                 };
                 self.error_text = res.error;
@@ -80,6 +83,7 @@ impl eframe::App for App {
                     self.dl_path = canonicalize(Path::new(&res.download_path)).unwrap().into_os_string().into_string().unwrap();
                 }
             }
+
             if self.success {
                 if ui.button("Open downloaded folder").on_hover_text("Opens a window to the folder containing the downloaded pngs for the adventure.").clicked() {
                     #[cfg(windows)]{
@@ -105,24 +109,29 @@ impl eframe::App for App {
     }
 }
 
+fn default_id_package(user_input: &str) -> IDPackage {
+    return IDPackage {valid: true, id: user_input, error_message: "".to_string()}
+}
+
+/// These functions open a file explorer window on their respective platforms.
 #[cfg(macos)]
 fn open_file_location_macos(file_path: &str) {
     Command::new( "open" )
-        .arg( file_path ) // <- Specify the directory you'd like to open.
+        .arg( file_path )
         .spawn( )
         .unwrap( );
 }
 #[cfg(windows)]
 fn open_file_location_windows(file_path: &str) {
     Command::new( "explorer" )
-        .arg( file_path ) // <- Specify the directory you'd like to open.
+        .arg( file_path )
         .spawn( )
         .unwrap( );
 }
 #[cfg(target_os = "linux")]
 fn open_file_location_linux(file_path: &str) {
     Command::new( "xdg-open" )
-        .arg( file_path ) // <- Specify the directory you'd like to open.
+        .arg( file_path )
         .spawn( )
         .unwrap( );
 }
@@ -162,7 +171,8 @@ fn clean_file_path(input_path: &str) -> String {
 
     if edit_str.len() == 0 {return edit_str.to_owned();}
 
-    if edit_str.chars().last().unwrap() == '/' || edit_str.chars().last().unwrap() == '\\' {
+    let last_char = edit_str.chars().last().unwrap();
+    if last_char == '/' || last_char == '\\' {
         return edit_str.to_owned();
     }
 
@@ -171,6 +181,8 @@ fn clean_file_path(input_path: &str) -> String {
     return end_appended;
 }
 
+/// All ID's in sporepedia URL's are preceeded immediately by "sast-"
+/// We use that to pull out the ID.
 fn pull_id_from_url(url: &str) -> IDPackage {
     let id_start = url.find("sast-");
     if let Some(id_start) = id_start {
@@ -184,7 +196,7 @@ fn pull_id_from_url(url: &str) -> IDPackage {
     return IDPackage {valid: false, id: "".to_string(), error_message: format!("Error: URL is not in a valid format")}
 }
 
-fn check_for_file(path: &str) {let _ = fs::create_dir_all(path);}
+fn create_path(path: &str) {let _ = fs::create_dir_all(path);}
 
 fn get_adventure_name(id: &str) -> String {
     let url = format!("http://www.spore.com/rest/asset/{id}");
@@ -201,6 +213,7 @@ fn get_adventure_name(id: &str) -> String {
     return format!("Adventure-{id}")
 }
 
+/// Called to return an error'd adventure download result struct. Helps reduce boilerplate.
 fn adventure_dl_error(err: &str) -> AdventureGetResult {
     return AdventureGetResult {
         success: false,
@@ -253,7 +266,7 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
 
     let buffer = req_data_from_server(&url);
 
-    check_for_file(&format!("{path}{adv_name}//"));
+    create_path(&format!("{path}{adv_name}//"));
     let file_name = format!("{path}{adv_name}//{input_id}.png");
     let file_path = Path::new(&file_name);
     let mut file = std::fs::File::create(file_path).unwrap();
@@ -270,7 +283,8 @@ fn get_adventure(package: IDPackage, path: &str) -> AdventureGetResult
     }
 }
 
-/// Sends a get request to the given URL. If an error is returned by the request it just repeatedly requests until it works again.
+/// Sends a get request to the given URL.
+/// If an error is returned by the request it just repeatedly requests until it works again.
 fn req_data_from_server(url: &str) -> Vec<u8> {
     let mut buffer = vec![];
     let result = reqwest::blocking::get(url);
@@ -291,8 +305,10 @@ fn req_data_from_server(url: &str) -> Vec<u8> {
 /// Gets all of the creations required for an adventure.
 /// Takes in the adventure's xml data as a string as a parameter
 fn get_adventure_creations(xml_data: &str, file_path: &str) {
-    if let None = xml_data.find("<assets><asset>") {return;}
-    let pos = xml_data.find("<assets><asset>").unwrap() + 15; // 15 = length of <assets><asset>
+    let assets_list = xml_data.find("<assets><asset>");
+    if let None = assets_list {return;} // For adventures that have no player made creations
+
+    let pos = assets_list.unwrap() + 15; // 15 = length of <assets><asset>
     let end = xml_data.find("<cScenarioResource>").unwrap() - 17;
     
     let ids = xml_data[pos..end].split("</asset><asset>");
