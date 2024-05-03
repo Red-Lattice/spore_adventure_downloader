@@ -1,2 +1,5 @@
 # Spore Adventure Downloader
-Mostly what it says on the tin. Downloads an adventure as well as all required assets from the server. Still in development. Right now it just dumps all of the pngs into the same directory as the executable.
+This is a lightweight and easy to use desktop application for downloading spore adventures. It gathers every creation png used in the adventure into one folder.
+If you're looking for an already built version, you can find it [here](https://red-lattice.github.io/SADL_downloads_and_info/)
+#
+This program was written using Rust, utilizing the egui framework for the GUI elements. Feel free to use or modify however you like. Just be sure to give credit!
