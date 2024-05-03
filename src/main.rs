@@ -108,7 +108,7 @@ impl eframe::App for App {
         });
         egui::TopBottomPanel::bottom("version").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Version 1.0.0  |  ");
+                ui.label("Version 1.0.1  |  ");
                 ui.hyperlink_to("For information on how to use, go here", "https://red-lattice.github.io/SADL_downloads_and_info/");
             });
             
@@ -212,14 +212,20 @@ fn create_path(path: &str) {
 
 fn get_adventure_name(id: &str) -> String {
     let url = format!("http://www.spore.com/rest/asset/{id}");
-    let buff = req_data_from_server(&url);
-    let data = String::from_utf8(buff.clone()).unwrap();
-    let start = data.find("<name>");
-    let end = data.find("</name>");
+    let mut buff = req_data_from_server(&url);
+    let _ = buff.drain(200..);
+    let data = String::from_utf8(buff);
+    if let Err(e) = data {
+        println!("{e}");
+        return format!("Adventure-{id}");
+    }
+    let unwrapped_data = data.unwrap();
+    let start = unwrapped_data.find("<name>");
+    let end = unwrapped_data.find("</name>");
     
     if let Some(start) = start {
         let end_pos = end.unwrap();
-        let adv_name = &data[start+6..end_pos];
+        let adv_name = &unwrapped_data[start+6..end_pos];
         return format!("{adv_name}");
     };
     return format!("Adventure-{id}")
